@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>نظام إدارة التكليفات والمحاضر</title>
+  <title>نظام إدارة صادر شركة الدعم</title>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
@@ -377,7 +377,7 @@
   <div class="container">
     <header>
       <div style="display:flex;gap:12px;align-items:center;">
-        <h1><i class="fas fa-file-contract"></i> نظام إدارة التكليفات والمحاضر</h1>
+        <h1><i class="fas fa-file-contract"></i> نظام إدارة صادر شركة الدعم</h1>
         <div class="muted small">عرض البيانات مباشرة من Google Sheets — التواريخ تعرض بالميلادي والأرقام بالأرقام الغربية</div>
       </div>
 
@@ -388,9 +388,9 @@
     </header>
 
     <div class="stats">
-      <div class="stat-card"><div class="stat-value"><span id="totalRecords">0</span></div><div class="stat-label">إجمالي التكليفات</div></div>
-      <div class="stat-card"><div class="stat-value"><span id="filteredRecords">0</span></div><div class="stat-label">التكليفات المصفاة</div></div>
-      <div class="stat-card"><div class="stat-value"><span id="totalValue">0</span> ر.س</div><div class="stat-label">إجمالي القيمة</div></div>
+      <div class="stat-card"><div class="stat-value"><span id="totalRecords">0</span></div><div class="stat-label">إجمالي السجلات</div></div>
+      <div class="stat-card"><div class="stat-value"><span id="filteredRecords">0</span></div><div class="stat-label">السجلات المصفاة</div></div>
+      <div class="stat-card"><div class="stat-value"><span id="totalValue">0</span></div><div class="stat-label">إجمالي الأرقام الإشارية</div></div>
     </div>
 
     <div class="filter-section">
@@ -403,13 +403,11 @@
         <label for="columnFilter">بحث في عمود محدد</label>
         <select id="columnFilter">
           <option value="all">جميع الأعمدة</option>
-          <option value="0">اسم المكلف</option>
-          <option value="1">بيان العمل</option>
-          <option value="2">قيمة التكليف</option>
-          <option value="3">رقم التكليف</option>
-          <option value="4">التاريخ</option>
-          <option value="5">موقع العمل</option>
-          <option value="6">المدة</option>
+          <option value="0">الجهة الموجه لها</option>
+          <option value="1">الموضوع</option>
+          <option value="2">الرقم الإشاري</option>
+          <option value="3">التاريخ</option>
+          <option value="4">المكلف به</option>
         </select>
       </div>
 
@@ -457,13 +455,11 @@
         <table id="dataTable">
           <thead>
             <tr>
-              <th width="15%" data-col="0">اسم المكلف <span class="sort-ind" id="sort-0"></span></th>
-              <th width="20%" data-col="1">بيان العمل <span class="sort-ind" id="sort-1"></span></th>
-              <th width="12%" data-col="2">قيمة التكليف <span class="sort-ind" id="sort-2"></span></th>
-              <th width="12%" data-col="3">رقم التكليف <span class="sort-ind" id="sort-3"></span></th>
-              <th width="12%" data-col="4">التاريخ <span class="sort-ind" id="sort-4"></span></th>
-              <th width="15%" data-col="5">موقع العمل <span class="sort-ind" id="sort-5"></span></th>
-              <th width="14%" data-col="6">المدة <span class="sort-ind" id="sort-6"></span></th>
+              <th width="20%" data-col="0">الجهة الموجه لها <span class="sort-ind" id="sort-0"></span></th>
+              <th width="25%" data-col="1">الموضوع <span class="sort-ind" id="sort-1"></span></th>
+              <th width="15%" data-col="2">الرقم الإشاري <span class="sort-ind" id="sort-2"></span></th>
+              <th width="15%" data-col="3">التاريخ <span class="sort-ind" id="sort-3"></span></th>
+              <th width="25%" data-col="4">المكلف به <span class="sort-ind" id="sort-4"></span></th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -485,7 +481,7 @@
 
   <script>
   // رابط CSV
-  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSv-LIrm2oZEBfHK9hMt7Bz5HYJbW1n0aInzh-i0g9agDKrKyNbyYkshaV1GMgcnn8oGVO5OeIYlKRS/pub?gid=0&single=true&output=csv";
+  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSv-LIrm2oZEBfHK9hMt7Bz5HYJbW1n0aInzh-i0g9agDKrKyNbyYkshaV1GMgcnn8oGVO5OeIYlKRS/pub?gid=281908707&single=true&output=csv";
 
   // كائن لتخزين البيانات المحولة مسبقاً لتحسين الأداء
   const preprocessedData = {
@@ -672,13 +668,11 @@
       const processedRow = [...row];
       
       // معالجة وتخزين التاريخ المحول مسبقاً
-      const dateValue = row[4] || "";
+      const dateValue = row[3] || "";
       processedRow.convertedDate = parseAndConvertDate(dateValue);
       
       // معالجة الأرقام في الخلايا
-      processedRow[2] = toLatinDigits(processedRow[2] || ""); // قيمة التكليف
-      processedRow[3] = toLatinDigits(processedRow[3] || ""); // رقم التكليف
-      processedRow[6] = toLatinDigits(processedRow[6] || ""); // المدة
+      processedRow[2] = toLatinDigits(processedRow[2] || ""); // الرقم الإشاري
       
       return processedRow;
     });
@@ -717,37 +711,29 @@
     }
     
     document.getElementById("noResults").classList.remove("show");
-    let totalValue = 0;
+    let totalRefs = 0;
     
     rows.forEach(r => {
       const tr = document.createElement("tr");
       
-      for (let c = 0; c < 7; c++) {
+      for (let c = 0; c < 5; c++) {
         const td = document.createElement("td");
         let cell = r[c] ?? "";
         
-        if (c === 2) { // قيمة التكليف
+        if (c === 2) { // الرقم الإشاري
           const num = parseFloat(String(cell).replace(/[^\d.\-]/g,''));
           if (!isNaN(num)) { 
-            totalValue += num; 
+            totalRefs += num; 
             td.textContent = formatNumber(num); 
             td.classList.add('amount-cell','numeric'); 
           } else {
             td.textContent = cell;
           }
-        } else if (c === 4) { // التاريخ
+        } else if (c === 3) { // التاريخ
           // استخدام التاريخ المحول مسبقاً
           if (r.convertedDate) { 
             td.textContent = formatDate(r.convertedDate); 
             td.classList.add('date-cell'); 
-          } else {
-            td.textContent = cell;
-          }
-        } else if (c === 3 || c === 6) { // رقم التكليف و المدة
-          const num = parseFloat(String(cell).replace(/[^\d.\-]/g,''));
-          if (!isNaN(num)) { 
-            td.textContent = formatNumber(num); 
-            td.classList.add('numeric'); 
           } else {
             td.textContent = cell;
           }
@@ -763,7 +749,7 @@
     
     document.getElementById("totalRecords").textContent = formatNumber(preprocessedData.originalRows.length || 0);
     document.getElementById("filteredRecords").textContent = formatNumber(rows.length || 0);
-    document.getElementById("totalValue").textContent = formatNumber(totalValue || 0);
+    document.getElementById("totalValue").textContent = formatNumber(totalRefs || 0);
   }
 
   /***************** تطبيق الفلترة والفرز (شامل نطاق التاريخ) *****************/
@@ -778,7 +764,7 @@
       if (globalQ !== "") {
         filtered = filtered.filter(r => 
           r.some((cell, index) => {
-            if (index === 4 && r.convertedDate) {
+            if (index === 3 && r.convertedDate) {
               // البحث في التواريخ المحولة
               const formattedDate = formatDate(r.convertedDate).toLowerCase();
               return formattedDate.includes(globalQ);
@@ -796,14 +782,14 @@
           
           if (col === "all") {
             return row.some((cell, index) => {
-              if (index === 4 && row.convertedDate) {
+              if (index === 3 && row.convertedDate) {
                 const formattedDate = formatDate(row.convertedDate).toLowerCase();
                 return formattedDate.includes(val);
               }
               return toLatinDigits(String(cell || '')).toLowerCase().includes(val);
             });
           } else {
-            if (col == 4 && row.convertedDate) {
+            if (col == 3 && row.convertedDate) {
               const formattedDate = formatDate(row.convertedDate).toLowerCase();
               return formattedDate.includes(val);
             }
@@ -841,7 +827,7 @@
           let bVal = b[col] || "";
           
           // استخدام التاريخ المحول للفرز إذا كان العمود هو التاريخ
-          if (col == 4) {
+          if (col == 3) {
             aVal = a.convertedDate || "";
             bVal = b.convertedDate || "";
           }
@@ -925,7 +911,7 @@
       // حفظ البيانات الأصلية
       preprocessedData.originalRows = parsed.slice(1).map(r => {
         const row = [];
-        for (let i = 0; i < 7; i++) row[i] = (r[i] !== undefined) ? r[i] : "";
+        for (let i = 0; i < 5; i++) row[i] = (r[i] !== undefined) ? r[i] : "";
         return row;
       }).filter(r => r.some(c => c !== ""));
       
@@ -984,7 +970,7 @@
       activeFilters = []; 
       sortState = { col: null, dir: null };
       
-      for (let i = 0; i < 7; i++) document.getElementById("sort-"+i).textContent = "";
+      for (let i = 0; i < 5; i++) document.getElementById("sort-"+i).textContent = "";
       
       updateFilterTags(); 
       applyFiltersAndSort();
@@ -1023,7 +1009,7 @@
           sortState.dir = "asc"; 
         }
         
-        for (let i = 0; i < 7; i++) { 
+        for (let i = 0; i < 5; i++) { 
           const el = document.getElementById("sort-"+i); 
           el.textContent = (i === sortState.col) ? (sortState.dir === "asc" ? "▲" : "▼") : ""; 
         }
