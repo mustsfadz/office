@@ -370,6 +370,16 @@
       opacity: 0.8;
     }
     
+    /* خلايا قابلة للنقر للفلترة */
+    .clickable-cell {
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .clickable-cell:hover {
+      background-color: #e0f2fe !important;
+    }
+    
     /* تحسينات للعرض على الجوال */
     @media (max-width: 1024px) {
       .filter-group { min-width: 160px; }
@@ -443,9 +453,15 @@
 
       <div style="min-width:260px;">
         <label class="small muted">نطاق التاريخ</label>
-        <div style="display:flex;gap:8px;">
-          <input id="dateFrom" type="date">
-          <input id="dateTo" type="date">
+        <div class="date-range-container">
+          <div class="date-range-group">
+            <label for="dateFrom" class="small">من</label>
+            <input id="dateFrom" type="date">
+          </div>
+          <div class="date-range-group">
+            <label for="dateTo" class="small">إلى</label>
+            <input id="dateTo" type="date">
+          </div>
         </div>
         <div style="margin-top:8px;">
           <div class="quick-date-buttons">
@@ -464,7 +480,7 @@
     <div class="table-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:15px;flex-wrap:wrap">
         <div class="small muted">
-          <i class="fas fa-info-circle"></i> انقر على عنوان العمود للترتيب - التواريخ والأرقام تم تنسيقها.
+          <i class="fas fa-info-circle"></i> انقر على عنوان العمود للترتيب - انقر على خلية للفلترة حسب قيمتها
           <span class="conversion-badge">التحويل التلقائي: هجري ← ميلادي</span>
         </div>
         <div class="small muted">
@@ -514,7 +530,7 @@
   };
 
   let displayRows = [];
-  let sortState = { col: null, dir: null };
+  let sortState = { col: 3, dir: 'desc' }; // الترتيب الافتراضي حسب التاريخ (الأحدث أولاً)
   let activeFilters = [];
   let searchDebounce;
   let lastUpdateTime = null;
@@ -762,6 +778,13 @@
           td.textContent = cell;
         }
         
+        // جعل الخلايا قابلة للنقر للفلترة (عدا عمود التاريخ)
+        if (c !== 3) {
+          td.classList.add('clickable-cell');
+          td.dataset.column = c;
+          td.dataset.value = cell;
+        }
+        
         tr.appendChild(td);
       }
       
@@ -838,7 +861,7 @@
         });
       }
       
-      // فرز
+      // فرز - الافتراضي حسب التاريخ (الأحدث أولاً)
       if (sortState.col !== null) {
         const col = sortState.col;
         const dir = sortState.dir === 'asc' ? 1 : -1;
@@ -943,6 +966,10 @@
       document.getElementById("lastUpdateTime").textContent = 
         `آخر تحديث: ${formatDate(lastUpdateTime)} ${lastUpdateTime.toLocaleTimeString('en-US')}`;
       
+      // تطبيق الفرز الافتراضي (التاريخ من الأحدث إلى الأقدم)
+      sortState = { col: 3, dir: 'desc' };
+      document.getElementById("sort-3").textContent = "▼";
+      
       applyFiltersAndSort();
     } catch (err) {
       console.error(err);
@@ -1035,9 +1062,12 @@
       document.getElementById("dateFrom").value = ""; 
       document.getElementById("dateTo").value = "";
       activeFilters = []; 
-      sortState = { col: null, dir: null };
+      sortState = { col: 3, dir: 'desc' }; // إعادة التعيين إلى الترتيب الافتراضي
       
-      for (let i = 0; i < 5; i++) document.getElementById("sort-"+i).textContent = "";
+      for (let i = 0; i < 5; i++) { 
+        const el = document.getElementById("sort-"+i); 
+        el.textContent = (i === 3) ? "▼" : ""; 
+      }
       
       updateFilterTags(); 
       applyFiltersAndSort();
@@ -1073,7 +1103,7 @@
           sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
         } else { 
           sortState.col = col; 
-          sortState.dir = "asc"; 
+          sortState.dir = "desc"; // الافتراضي من الأحدث إلى الأقدم
         }
         
         for (let i = 0; i < 5; i++) { 
@@ -1087,6 +1117,23 @@
     
     // إعداد خاصية السحب لتغيير حجم الأعمدة
     setupColumnResizing();
+    
+    // إضافة حدث النقر على الخلايا للفلترة
+    document.addEventListener('click', function(e) {
+      if (e.target.classList.contains('clickable-cell')) {
+        const column = e.target.dataset.column;
+        const value = e.target.dataset.value;
+        
+        if (value && value.trim() !== '') {
+          // تعيين قيمة البحث في الفلتر
+          document.getElementById("columnFilter").value = column;
+          document.getElementById("columnSearch").value = value;
+          
+          // إضافة الفلتر
+          addFilter();
+        }
+      }
+    });
   }
 
   // بدء التشغيل
