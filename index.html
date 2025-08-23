@@ -115,7 +115,7 @@
       width: 100%;
       border-collapse: collapse;
       direction: rtl;
-      table-layout: auto;
+      table-layout: fixed;
       word-wrap: break-word;
       margin: 20px 0;
     }
@@ -126,6 +126,7 @@
       text-align: right;
       vertical-align: middle;
       font-size: 15px;
+      position: relative;
     }
     
     thead th {
@@ -136,6 +137,7 @@
       font-weight: 700;
       color: var(--text);
       transition: background 0.2s;
+      user-select: none;
     }
     
     thead th:hover { background: #e2e8f0; }
@@ -352,6 +354,23 @@
       margin-left: 8px;
     }
     
+    /* أنماط السحب لتغيير حجم الأعمدة */
+    .resize-handle {
+      position: absolute;
+      top: 0;
+      left: -5px;
+      width: 10px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 10;
+    }
+    
+    .resizing {
+      background-color: #f1f5f9;
+      opacity: 0.8;
+    }
+    
+    /* تحسينات للعرض على الجوال */
     @media (max-width: 1024px) {
       .filter-group { min-width: 160px; }
     }
@@ -363,6 +382,7 @@
       .filter-section { flex-direction: column; align-items: stretch; }
       .filter-group { min-width: 100%; }
       input[type="search"], input[type="date"], select { min-width: 100%; }
+      .resize-handle { display: none; } /* إخفاء مقابض السحب على الشاشات الصغيرة */
     }
     
     @media (max-width: 640px) {
@@ -447,6 +467,9 @@
           <i class="fas fa-info-circle"></i> انقر على عنوان العمود للترتيب - التواريخ والأرقام تم تنسيقها.
           <span class="conversion-badge">التحويل التلقائي: هجري ← ميلادي</span>
         </div>
+        <div class="small muted">
+          <i class="fas fa-arrows-alt-h"></i> اسحب نهاية العمود لتغيير عرضه
+        </div>
       </div>
 
       <div id="loading" class="loading"><div class="spinner"></div><p>جاري تحميل البيانات...</p></div>
@@ -455,11 +478,11 @@
         <table id="dataTable">
           <thead>
             <tr>
-              <th width="20%" data-col="0">الجهة الموجه لها <span class="sort-ind" id="sort-0"></span></th>
-              <th width="25%" data-col="1">الموضوع <span class="sort-ind" id="sort-1"></span></th>
-              <th width="15%" data-col="2">الرقم الإشاري <span class="sort-ind" id="sort-2"></span></th>
-              <th width="15%" data-col="3">التاريخ <span class="sort-ind" id="sort-3"></span></th>
-              <th width="25%" data-col="4">المكلف به <span class="sort-ind" id="sort-4"></span></th>
+              <th width="20%" data-col="0">الجهة الموجه لها <span class="sort-ind" id="sort-0"></span><div class="resize-handle"></div></th>
+              <th width="25%" data-col="1">الموضوع <span class="sort-ind" id="sort-1"></span><div class="resize-handle"></div></th>
+              <th width="15%" data-col="2">الرقم الإشاري <span class="sort-ind" id="sort-2"></span><div class="resize-handle"></div></th>
+              <th width="15%" data-col="3">التاريخ <span class="sort-ind" id="sort-3"></span><div class="resize-handle"></div></th>
+              <th width="25%" data-col="4">المكلف به <span class="sort-ind" id="sort-4"></span><div class="resize-handle"></div></th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -495,6 +518,10 @@
   let activeFilters = [];
   let searchDebounce;
   let lastUpdateTime = null;
+  let isResizing = false;
+  let currentColumn = null;
+  let startX = 0;
+  let startWidth = 0;
 
   /***************** تحويل الأرقام العربية إلى لاتينية *****************/
   function toLatinDigits(str) {
@@ -721,14 +748,8 @@
         let cell = r[c] ?? "";
         
         if (c === 2) { // الرقم الإشاري
-          const num = parseFloat(String(cell).replace(/[^\d.\-]/g,''));
-          if (!isNaN(num)) { 
-            totalRefs += num; 
-            td.textContent = formatNumber(num); 
-            td.classList.add('amount-cell','numeric'); 
-          } else {
-            td.textContent = cell;
-          }
+          // عرض النص كما هو بدلاً من معاملته كرقم
+          td.textContent = cell;
         } else if (c === 3) { // التاريخ
           // استخدام التاريخ المحول مسبقاً
           if (r.convertedDate) { 
@@ -948,6 +969,52 @@
     }
   }
 
+  /***************** إعداد خاصية السحب لتغيير حجم الأعمدة *****************/
+  function setupColumnResizing() {
+    const handles = document.querySelectorAll('.resize-handle');
+    
+    handles.forEach(handle => {
+      handle.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        currentColumn = handle.parentElement;
+        startX = e.pageX;
+        startWidth = currentColumn.offsetWidth;
+        
+        // إضافة صنف للإشارة إلى أن العمود قيد التغيير
+        currentColumn.classList.add('resizing');
+        
+        // منع تحديد النص أثناء السحب
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
+        
+        e.preventDefault();
+      });
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing || !currentColumn) return;
+      
+      const width = startWidth + (startX - e.pageX);
+      if (width > 50) { // الحد الأدنى لعرض العمود
+        currentColumn.style.width = width + 'px';
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        if (currentColumn) {
+          currentColumn.classList.remove('resizing');
+          currentColumn = null;
+        }
+        
+        // إعادة ضبط أنماط المؤشر وتحديد النص
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      }
+    });
+  }
+
   /***************** تهيئة الواجهة وتفاعلات الأزرار *****************/
   function setupUI() {
     document.getElementById("globalSearch").addEventListener("input", () => { 
@@ -1017,6 +1084,9 @@
         applyFiltersAndSort();
       });
     });
+    
+    // إعداد خاصية السحب لتغيير حجم الأعمدة
+    setupColumnResizing();
   }
 
   // بدء التشغيل
