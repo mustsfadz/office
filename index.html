@@ -519,7 +519,7 @@
   </div>
 
   <script>
-  /***************** إعداد رابط CSV هنا (تأكد أن الرابط مُنشر ومسموح للقراءة عام) *****************/
+  /***************** رابط CSV الذي زوّدتني به *****************/
   const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSv-LIrm2oZEBfHK9hMt7Bz5HYJbW1n0aInzh-i0g9agDKrKyNbyYkshaV1GMgcnn8oGVO5OeIYlKRS/pub?output=csv";
 
   /***************** هياكل البيانات وحالة الواجهة *****************/
@@ -852,7 +852,6 @@
   }
 
   function addFilterFromCell(column, value) {
-    // column قد يكون رقم كسلسلة
     activeFilters.push({ column: String(column), value: String(value), condition: "contains" });
     updateFilterTags();
     applyFiltersAndSort();
@@ -951,8 +950,6 @@
     try {
       const ok = await loadDataFromCSV();
       if (ok) {
-        // إشعار خفيف
-        // لا تستخدم alert كثيراً — نكتفي بتحديث الواجهة
         console.log("تم تحديث البيانات بنجاح");
       }
     } catch (e) {
@@ -1093,4 +1090,3 @@
   </script>
 </body>
 </html>
-
