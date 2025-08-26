@@ -420,7 +420,7 @@
     <div class="stats">
       <div class="stat-card"><div class="stat-value"><span id="totalRecords">0</span></div><div class="stat-label">إجمالي السجلات</div></div>
       <div class="stat-card"><div class="stat-value"><span id="filteredRecords">0</span></div><div class="stat-label">السجلات المصفاة</div></div>
-      <div class="stat-card"><div class="stat-value"><span id="totalValue">0</span></div><div class="stat-label">إجمالي الأرقام الإشارية</div></div>
+      <div class="stat-card"><div class="stat-value"><span id="totalValue">0</span></div><div class="stat-label">مجموع الرقم الإشاري (قابل للعد)</div></div>
     </div>
 
     <div class="filter-section">
@@ -519,54 +519,39 @@
   </div>
 
   <script>
-  // رابط CSV
-  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSv-LIrm2oZEBfHK9hMt7Bz5HYJbW1n0aInzh-i0g9agDKrKyNbyYkshaV1GMgcnn8oGVO5OeIYlKRS/pub?output=csv";
+  /***************** إعداد رابط CSV هنا (تأكد أن الرابط مُنشر ومسموح للقراءة عام) *****************/
+  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSv-LIrm2oZEBfHK9hMt7Bz5HYJbW1n0aInzh-i0g9agDKrKyNbyYkshaV1GMgcnn8oGVO5OeIYlKRS/pub?gid=281908707&single=true&output=csv";
 
-  // كائن لتخزين البيانات المحولة مسبقاً لتحسين الأداء
-  const preprocessedData = {
-    originalRows: [],
-    convertedRows: [],
-    dateCache: new Map() // تخزين نتائج تحويل التواريخ لتحسين الأداء
-  };
-
+  /***************** هياكل البيانات وحالة الواجهة *****************/
+  const preprocessedData = { originalRows: [], convertedRows: [], dateCache: new Map() };
   let displayRows = [];
-  let sortState = { col: 3, dir: 'desc' }; // الترتيب الافتراضي حسب التاريخ (الأحدث أولاً)
+  let sortState = { col: 3, dir: 'desc' }; // افتراضي: ترتيب حسب التاريخ (الأحدث أولاً)
   let activeFilters = [];
-  let searchDebounce;
+  let searchDebounce = null;
   let lastUpdateTime = null;
-  let isResizing = false;
-  let currentColumn = null;
-  let startX = 0;
-  let startWidth = 0;
 
-  /***************** تحويل الأرقام العربية إلى لاتينية *****************/
+  /***************** تحويل أرقام عربية → لاتينية *****************/
   function toLatinDigits(str) {
-    if (!str && str !== 0) return str;
+    if (str === undefined || str === null) return str;
     let s = String(str);
-    // Arabic-Indic ٠١٢٣٤٥٦٧٨٩
     const arabicIndic = {'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'};
     s = s.replace(/[٠-٩]/g, d => arabicIndic[d]);
-    // Eastern Arabic-Indic ۰۱۲۳۴۵۶۷۸۹
     const persian = {'۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9'};
     s = s.replace(/[۰-۹]/g, d => persian[d]);
     return s;
   }
 
-  /***************** دوال تحويل التاريخ الهجري ↔ ميلادي *****************/
-  // تحويل تاريخ هجري (y,m,d) إلى Julian Day Number (JDN)
+  /***************** تحويل الهجري ↔ JDN ↔ ميلادي *****************/
   function islamicToJDN(y, m, d) {
     return Math.floor((11 * y + 3) / 30) + 354 * y + 30 * m - Math.floor((m - 1) / 2) + d + 1948440 - 385;
   }
-
-  // تحويل JDN إلى تاريخ ميلادي (Gregorian)
   function jdnToGregorian(jd) {
     let j = jd + 0.5;
     let Z = Math.floor(j);
     let F = j - Z;
     let A;
-    if (Z < 2299161) {
-      A = Z;
-    } else {
+    if (Z < 2299161) A = Z;
+    else {
       let alpha = Math.floor((Z - 1867216.25) / 36524.25);
       A = Z + 1 + alpha - Math.floor(alpha / 4);
     }
@@ -579,34 +564,22 @@
     let year = (month > 2) ? C - 4716 : C - 4715;
     return new Date(year, month - 1, Math.floor(day));
   }
-
-  // تحويل هجري → ميلادي (تأخذ y,m,d) وتُرجع Date
   function hijriToGregorian(hY, hM, hD) {
     const jdn = islamicToJDN(hY, hM, hD);
     return jdnToGregorian(jdn);
   }
 
-  /***************** تحليل تاريخ الخلية وتحويله إلى Date ميلادي *****************/
+  /***************** تحليل وتحويل تاريخ الخلية → Date ميلادي *****************/
   function parseAndConvertDate(value) {
     if (!value && value !== 0) return null;
-    
-    // التحقق من وجود القيمة في الذاكرة المؤقتة أولاً
-    if (preprocessedData.dateCache.has(value)) {
-      return preprocessedData.dateCache.get(value);
-    }
-    
+    if (preprocessedData.dateCache.has(value)) return preprocessedData.dateCache.get(value);
     let raw = String(value).trim();
-    // تحويل الأرقام العربية إلى لاتينية أولاً
     raw = toLatinDigits(raw);
-    // ازالة كلمات زائدة مثل "هـ" أو Arabic letters
     const containsHijriMarker = /[هھـ]/i.test(String(value));
-    // تنظيف الحروف غير رقمية إلا / - و space
     const cleaned = raw.replace(/[^\d\/\-\s]/g, '').trim();
-
     let result = null;
 
-    // حاول التعرف على الصيغ:
-    // 1) ISO yyyy-mm-dd
+    // ISO yyyy-mm-dd
     const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
     const mIso = cleaned.match(iso);
     if (mIso) {
@@ -615,21 +588,18 @@
       result = isNaN(date.getTime()) ? null : date;
     }
 
-    // 2) d/m/yyyy or d-m-yyyy or dd/mm/yy
+    // d/m/yyyy or d-m-yyyy or dd/mm/yy
     if (!result) {
       const dmy = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/;
       const mDmy = cleaned.match(dmy);
       if (mDmy) {
         let day = parseInt(mDmy[1],10), month = parseInt(mDmy[2],10), year = parseInt(mDmy[3],10);
         if (year < 100) year += 2000;
-        
-        // إذا العلامة الهجرية موجودة أو السنة في نطاق هجري المحتمل (مثلاً 1300-1600) فاعتبرها هجريًا
         if (containsHijriMarker || (year >= 1300 && year <= 1600)) {
           try {
             const g = hijriToGregorian(year, month, day);
             result = isNaN(g.getTime()) ? null : g;
           } catch (e) {
-            // في حالة الخطأ، نتعامل معها كتاريخ ميلادي
             const date = new Date(year, month-1, day);
             result = isNaN(date.getTime()) ? null : date;
           }
@@ -640,25 +610,18 @@
       }
     }
 
-    // 3) محاولة عامة لبارس Date
+    // محاولة عامة
     if (!result) {
       const tryDate = new Date(toLatinDigits(String(value)));
       result = isNaN(tryDate.getTime()) ? null : tryDate;
     }
 
-    // تخزين النتيجة في الذاكرة المؤقتة لتحسين الأداء
     preprocessedData.dateCache.set(value, result);
     return result;
   }
 
-  /***************** تنسيقات العرض (أرقام لاتينية، تواريخ DD/MM/YYYY) *****************/
-  function formatNumber(num) {
-    if (num == null || isNaN(num)) return "0";
-    return new Intl.NumberFormat('en-US').format(num);
-  }
-
+  /***************** تنسيقات العرض *****************/
   function pad2(n) { return String(n).padStart(2,'0'); }
-  
   function formatDate(date) {
     if (!date) return "";
     const d = date.getDate();
@@ -666,8 +629,12 @@
     const y = date.getFullYear();
     return `${pad2(d)}/${pad2(m)}/${y}`;
   }
+  function formatNumber(num) {
+    if (num == null || isNaN(num)) return "0";
+    return new Intl.NumberFormat('en-US').format(num);
+  }
 
-  /***************** CSV parser بسيط *****************/
+  /***************** CSV parser بسيط وموثوق *****************/
   function parseCSV(text) {
     const rows = [];
     let cur = '';
@@ -705,18 +672,14 @@
     return rows.map(r => r.map(c => String(c).trim())).filter(r => r.some(c => c !== ""));
   }
 
-  /***************** معالجة مسبقة للبيانات لتحسين الأداء *****************/
+  /***************** معالجة مسبقة للبيانات *****************/
   function preprocessData(rows) {
-    return rows.map(row => {
-      const processedRow = [...row];
-      
-      // معالجة وتخزين التاريخ المحول مسبقاً
-      const dateValue = row[3] || "";
-      processedRow.convertedDate = parseAndConvertDate(dateValue);
-      
-      // معالجة الأرقام في الخلايا
-      processedRow[2] = toLatinDigits(processedRow[2] || ""); // الرقم الإشاري
-      
+    return rows.map(r => {
+      const processedRow = [];
+      for (let i = 0; i < 5; i++) processedRow[i] = (r[i] !== undefined) ? r[i] : "";
+      processedRow.convertedDate = parseAndConvertDate(processedRow[3] || "");
+      // تحويل الرقم الإشاري لعرض ثابت (نترك النص كما هو، لكن نخزّن النسخة الرقمية للنمط إذا احتجنا)
+      processedRow[2] = toLatinDigits(processedRow[2] || "");
       return processedRow;
     });
   }
@@ -727,24 +690,24 @@
     if (a == null || a === "") return -1;
     if (b == null || b === "") return 1;
     
-    // حاول تحويل إلى تاريخ
+    // إذا كان كلاهما تواريخ
     const da = parseAndConvertDate(a);
     const db = parseAndConvertDate(b);
     if (da && db) return da - db;
     
-    // حاول رقم
-    const na = Number(toLatinDigits(String(a)).replace(/[^0-9.\-]/g,'')); 
-    const nb = Number(toLatinDigits(String(b)).replace(/[^0-9.\-]/g,''));
+    // محاولة رقمية
+    const na = Number(String(toLatinDigits(a)).replace(/[^0-9.\-]/g,'')); 
+    const nb = Number(String(toLatinDigits(b)).replace(/[^0-9.\-]/g,''));
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
     
     return String(a).localeCompare(String(b), 'ar');
   }
 
-  /***************** عرض الجدول (مع تنسيق الأرقام والتواريخ) *****************/
+  /***************** عرض الجدول وتحديث الإحصائيات *****************/
   function renderTable(rows) {
     const tbody = document.querySelector("#dataTable tbody");
     tbody.innerHTML = "";
-    
+
     if (!rows || rows.length === 0) {
       document.getElementById("noResults").classList.add("show");
       document.getElementById("totalRecords").textContent = formatNumber(preprocessedData.originalRows.length || 0);
@@ -752,105 +715,100 @@
       document.getElementById("totalValue").textContent = formatNumber(0);
       return;
     }
-    
+
     document.getElementById("noResults").classList.remove("show");
-    let totalRefs = 0;
-    
+
     rows.forEach(r => {
       const tr = document.createElement("tr");
-      
       for (let c = 0; c < 5; c++) {
         const td = document.createElement("td");
         let cell = r[c] ?? "";
-        
+
         if (c === 2) { // الرقم الإشاري
-          // عرض النص كما هو بدلاً من معاملته كرقم
           td.textContent = cell;
+          td.classList.add("amount-cell");
         } else if (c === 3) { // التاريخ
-          // استخدام التاريخ المحول مسبقاً
-          if (r.convertedDate) { 
-            td.textContent = formatDate(r.convertedDate); 
-            td.classList.add('date-cell'); 
+          if (r.convertedDate) {
+            td.textContent = formatDate(r.convertedDate);
+            td.classList.add('date-cell');
           } else {
             td.textContent = cell;
           }
         } else {
           td.textContent = cell;
         }
-        
-        // جعل الخلايا قابلة للنقر للفلترة (عدا عمود التاريخ)
-        if (c !== 3) {
+
+        if (c !== 3) { // خلايا قابلة للنقر (عدا التاريخ)
           td.classList.add('clickable-cell');
           td.dataset.column = c;
           td.dataset.value = cell;
         }
-        
         tr.appendChild(td);
       }
-      
       tbody.appendChild(tr);
     });
-    
+
     document.getElementById("totalRecords").textContent = formatNumber(preprocessedData.originalRows.length || 0);
     document.getElementById("filteredRecords").textContent = formatNumber(rows.length || 0);
-    document.getElementById("totalValue").textContent = formatNumber(totalRefs || 0);
+
+    // حساب مجموع القيم الرقمية الموجودة في العمود 2 (إذا أمكن استخراج أرقام)
+    const totalRefs = rows.reduce((sum, r) => {
+      const numText = String(toLatinDigits(r[2] || '')).replace(/[^0-9.\-]/g, '');
+      const n = Number(numText);
+      return sum + (isNaN(n) ? 0 : n);
+    }, 0);
+    document.getElementById("totalValue").textContent = formatNumber(totalRefs);
   }
 
-  /***************** تطبيق الفلترة والفرز (شامل نطاق التاريخ) *****************/
+  /***************** تطبيق الفلاتر والفرز (يشمل نطاق التاريخ) *****************/
   function applyFiltersAndSort() {
     document.getElementById("loading").classList.add("show");
-    
+
     setTimeout(() => {
       const globalQ = toLatinDigits(document.getElementById("globalSearch").value.trim().toLowerCase());
       let filtered = [...preprocessedData.convertedRows];
-      
+
       // بحث عام
       if (globalQ !== "") {
-        filtered = filtered.filter(r => 
-          r.some((cell, index) => {
-            if (index === 3 && r.convertedDate) {
-              // البحث في التواريخ المحولة
-              const formattedDate = formatDate(r.convertedDate).toLowerCase();
-              return formattedDate.includes(globalQ);
+        filtered = filtered.filter(r =>
+          r.some((cell, idx) => {
+            if (idx === 3 && r.convertedDate) {
+              return formatDate(r.convertedDate).toLowerCase().includes(globalQ);
             }
             return toLatinDigits(String(cell || '')).toLowerCase().includes(globalQ);
           })
         );
       }
-      
+
       // فلاتر مضافة
       activeFilters.forEach(filter => {
         filtered = filtered.filter(row => {
           const col = filter.column;
           const val = toLatinDigits(String(filter.value).toLowerCase());
-          
           if (col === "all") {
-            return row.some((cell, index) => {
-              if (index === 3 && row.convertedDate) {
-                const formattedDate = formatDate(row.convertedDate).toLowerCase();
-                return formattedDate.includes(val);
+            return row.some((cell, idx) => {
+              if (idx === 3 && row.convertedDate) {
+                return formatDate(row.convertedDate).toLowerCase().includes(val);
               }
               return toLatinDigits(String(cell || '')).toLowerCase().includes(val);
             });
           } else {
-            if (col == 3 && row.convertedDate) {
-              const formattedDate = formatDate(row.convertedDate).toLowerCase();
-              return formattedDate.includes(val);
+            if (parseInt(col,10) === 3 && row.convertedDate) {
+              return formatDate(row.convertedDate).toLowerCase().includes(val);
             }
             const cv = toLatinDigits(String(row[col] || '')).toLowerCase();
             return cv.includes(val);
           }
         });
       });
-      
+
       // نطاق التاريخ
       const dateFromVal = document.getElementById("dateFrom").value;
       const dateToVal = document.getElementById("dateTo").value;
       let from = dateFromVal ? new Date(dateFromVal) : null;
       let to = dateToVal ? new Date(dateToVal) : null;
-      
-      if (to) to.setHours(23, 59, 59, 999);
-      
+      if (to) to.setHours(23,59,59,999);
+
       if (from || to) {
         filtered = filtered.filter(row => {
           const d = row.convertedDate;
@@ -860,276 +818,263 @@
           return true;
         });
       }
-      
-      // فرز - الافتراضي حسب التاريخ (الأحدث أولاً)
-      if (sortState.col !== null) {
-        const col = sortState.col;
+
+      // فرز
+      if (sortState.col !== null && sortState.col !== undefined) {
+        const col = parseInt(sortState.col, 10);
         const dir = sortState.dir === 'asc' ? 1 : -1;
-        
-        filtered.sort((a, b) => {
+        filtered.sort((a,b) => {
           let aVal = a[col] || "";
           let bVal = b[col] || "";
-          
-          // استخدام التاريخ المحول للفرز إذا كان العمود هو التاريخ
-          if (col == 3) {
-            aVal = a.convertedDate || "";
-            bVal = b.convertedDate || "";
-          }
-          
+          if (col === 3) { aVal = a.convertedDate || ""; bVal = b.convertedDate || ""; }
           return smartCompare(aVal, bVal) * dir;
         });
       }
-      
+
       displayRows = filtered;
       renderTable(displayRows);
       document.getElementById("loading").classList.remove("show");
-    }, 40);
+    }, 30);
   }
 
-  /***************** فلاتر تفاعلية *****************/
+  /***************** إدارة الفلاتر المرئية *****************/
   function addFilter() {
     const column = document.getElementById("columnFilter").value;
     const value = document.getElementById("columnSearch").value.trim();
     const condition = "contains";
-    
-    if (!value) { 
-      alert("يرجى إدخال قيمة للبحث عنها"); 
-      return; 
-    }
-    
+    if (!value) { alert("يرجى إدخال قيمة للبحث عنها"); return; }
     const exists = activeFilters.some(f => f.column === column && f.value === value && f.condition === condition);
-    
-    if (exists) { 
-      alert("هذا الفلتر مضاف مسبقاً"); 
-      return; 
-    }
-    
+    if (exists) { alert("هذا الفلتر مضاف مسبقاً"); return; }
     activeFilters.push({ column, value, condition });
     updateFilterTags();
     applyFiltersAndSort();
+    document.getElementById("columnSearch").value = "";
   }
-  
-  function removeFilter(i) { 
-    activeFilters.splice(i, 1); 
-    updateFilterTags(); 
-    applyFiltersAndSort(); 
+
+  function addFilterFromCell(column, value) {
+    // column قد يكون رقم كسلسلة
+    activeFilters.push({ column: String(column), value: String(value), condition: "contains" });
+    updateFilterTags();
+    applyFiltersAndSort();
   }
-  
+
+  function removeFilter(i) {
+    activeFilters.splice(i, 1);
+    updateFilterTags();
+    applyFiltersAndSort();
+  }
+
   function updateFilterTags() {
-    const container = document.getElementById("filterTags"); 
+    const container = document.getElementById("filterTags");
     container.innerHTML = "";
-    
     activeFilters.forEach((f, i) => {
       let colName = "جميع الأعمدة";
-      if (f.column !== "all") { 
-        const header = document.querySelector(`th[data-col="${f.column}"]`); 
-        colName = header ? header.textContent.split(' ')[0] : `العمود ${f.column}`; 
+      if (f.column !== "all") {
+        const header = document.querySelector(`th[data-col="${f.column}"]`);
+        colName = header ? header.textContent.split(' ')[0] : `العمود ${f.column}`;
       }
-      
-      const tag = document.createElement('div'); 
+      const tag = document.createElement('div');
       tag.className = 'filter-tag';
       tag.innerHTML = `${colName} يحتوي على "${f.value}" <button onclick="removeFilter(${i})">×</button>`;
       container.appendChild(tag);
     });
   }
 
-  /***************** جلب البيانات من Google Sheets CSV *****************/
+  /***************** جلب البيانات من Google Sheets (CSV) مع معالجة الأخطاء *****************/
   async function loadDataFromCSV() {
     try {
       document.getElementById("loading").classList.add("show");
       const resp = await fetch(SHEET_CSV_URL, { cache: "no-store" });
-      
-      if (!resp.ok) throw new Error("فشل جلب الملف: " + resp.status);
-      
+
+      if (!resp.ok) {
+        // رسائل خطأ أوضح للمستخدم
+        let message = `فشل جلب الملف: ${resp.status}`;
+        if (resp.status === 400) {
+          message += " — (400) عادةً يعني أن رابط الـ CSV غير صحيح أو أن ملف Google Sheets لم يُنشر بشكل صحيح. تأكد من: 1) رابط 'publish to web' صحيح، 2) استخدام output=csv، 3) ليس هناك قيود وصول.";
+        } else if (resp.status === 403 || resp.status === 401) {
+          message += " — (صلاحيات) تحقق من إعدادات المشاركة في Google Sheets: يجب أن تكون 'Anyone with the link' أو تم نشره للنشر العام.";
+        } else if (resp.status === 404) {
+          message += " — (404) الرابط غير موجود. تأكد من صحة رابط الـ CSV.";
+        } else {
+          message += " — تحقق من الرابط وصلاحيات المشاركة أو من وجود قيود CORS.";
+        }
+        throw new Error(message);
+      }
+
       const text = await resp.text();
       const parsed = parseCSV(text);
-      
-      if (parsed.length === 0) { 
-        alert("الملف فارغ أو لم يتمكن المتصفح من قراءته"); 
-        return; 
+
+      if (!parsed || parsed.length === 0) {
+        throw new Error("الملف فارغ أو غير قابل للقراءة بواسطة المتصفح (تأكد أن الرابط يشير إلى CSV مُنشر).");
       }
-      
-      // مسح الذاكرة المؤقتة للبيانات القديمة
+
+      // مسح الكاش القديم
       preprocessedData.dateCache.clear();
-      
-      // حفظ البيانات الأصلية
-      preprocessedData.originalRows = parsed.slice(1).map(r => {
+
+      // افترض أن الصف الأول ترويسة ونقصه
+      const dataRows = parsed.slice(1).map(r => {
         const row = [];
         for (let i = 0; i < 5; i++) row[i] = (r[i] !== undefined) ? r[i] : "";
         return row;
       }).filter(r => r.some(c => c !== ""));
-      
-      // معالجة مسبقة للبيانات
+
+      preprocessedData.originalRows = dataRows;
       preprocessedData.convertedRows = preprocessData(preprocessedData.originalRows);
-      
+
       lastUpdateTime = new Date();
-      document.getElementById("lastUpdateTime").textContent = 
+      document.getElementById("lastUpdateTime").textContent =
         `آخر تحديث: ${formatDate(lastUpdateTime)} ${lastUpdateTime.toLocaleTimeString('en-US')}`;
-      
-      // تطبيق الفرز الافتراضي (التاريخ من الأحدث إلى الأقدم)
+
+      // تحديث حالة الفرز الافتراضية
       sortState = { col: 3, dir: 'desc' };
-      document.getElementById("sort-3").textContent = "▼";
-      
+      for (let i = 0; i < 5; i++) {
+        const el = document.getElementById("sort-"+i);
+        el.textContent = (i === 3) ? "▼" : "";
+      }
+
       applyFiltersAndSort();
+      return true;
     } catch (err) {
       console.error(err);
-      alert("حدث خطأ عند تحميل البيانات: " + err.message);
+      alert("حدث خطأ عند تحميل البيانات:\n" + err.message + "\n\nنصائح: تأكد أن ملف Google Sheets 'مُنشر' عبر File → Publish to web ثم استخدم رابط CSV (output=csv). أيضاً راجع إعدادات المشاركة لتكون 'Anyone with the link'.");
+      return false;
     } finally {
       document.getElementById("loading").classList.remove("show");
     }
   }
 
-  /***************** تحديث البيانات (زر) *****************/
+  /***************** زر التحديث مع واجهة مستخدم مريحة *****************/
   async function refreshData() {
-    const btn = document.getElementById("refreshBtn"); 
-    btn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> جاري التحديث...'; 
+    const btn = document.getElementById("refreshBtn");
+    btn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> جاري التحديث...';
     btn.disabled = true;
-    
-    try { 
-      await loadDataFromCSV(); 
-      alert("تم تحديث البيانات"); 
-    } catch(e) { 
-      alert("فشل التحديث: " + e.message); 
-    } finally { 
-      btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث البيانات'; 
-      btn.disabled = false; 
+    try {
+      const ok = await loadDataFromCSV();
+      if (ok) {
+        // إشعار خفيف
+        // لا تستخدم alert كثيراً — نكتفي بتحديث الواجهة
+        console.log("تم تحديث البيانات بنجاح");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث البيانات';
+      btn.disabled = false;
     }
   }
 
-  /***************** إعداد خاصية السحب لتغيير حجم الأعمدة *****************/
+  /***************** ضبط تغيير حجم الأعمدة *****************/
   function setupColumnResizing() {
     const handles = document.querySelectorAll('.resize-handle');
-    
+    let isResizing = false, currentColumn = null, startX = 0, startWidth = 0;
+
     handles.forEach(handle => {
       handle.addEventListener('mousedown', (e) => {
         isResizing = true;
         currentColumn = handle.parentElement;
         startX = e.pageX;
         startWidth = currentColumn.offsetWidth;
-        
-        // إضافة صنف للإشارة إلى أن العمود قيد التغيير
         currentColumn.classList.add('resizing');
-        
-        // منع تحديد النص أثناء السحب
         document.body.style.userSelect = 'none';
         document.body.style.cursor = 'col-resize';
-        
         e.preventDefault();
       });
     });
-    
+
     document.addEventListener('mousemove', (e) => {
       if (!isResizing || !currentColumn) return;
-      
       const width = startWidth + (startX - e.pageX);
-      if (width > 50) { // الحد الأدنى لعرض العمود
-        currentColumn.style.width = width + 'px';
-      }
+      if (width > 50) { currentColumn.style.width = width + 'px'; }
     });
-    
+
     document.addEventListener('mouseup', () => {
       if (isResizing) {
         isResizing = false;
-        if (currentColumn) {
-          currentColumn.classList.remove('resizing');
-          currentColumn = null;
-        }
-        
-        // إعادة ضبط أنماط المؤشر وتحديد النص
+        if (currentColumn) { currentColumn.classList.remove('resizing'); currentColumn = null; }
         document.body.style.userSelect = '';
         document.body.style.cursor = '';
       }
     });
   }
 
-  /***************** تهيئة الواجهة وتفاعلات الأزرار *****************/
+  /***************** تهيئة الواجهة والأحداث *****************/
   function setupUI() {
-    document.getElementById("globalSearch").addEventListener("input", () => { 
-      clearTimeout(searchDebounce); 
-      searchDebounce = setTimeout(() => applyFiltersAndSort(), 400); 
+    document.getElementById("globalSearch").addEventListener("input", () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => applyFiltersAndSort(), 400);
     });
-    
-    document.getElementById("columnSearch").addEventListener("input", () => { 
-      clearTimeout(searchDebounce); 
-      searchDebounce = setTimeout(() => applyFiltersAndSort(), 400); 
+
+    document.getElementById("columnSearch").addEventListener("input", () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => applyFiltersAndSort(), 400);
     });
-    
+
     document.getElementById("addFilterBtn").addEventListener("click", addFilter);
-    
+
     document.getElementById("resetBtn").addEventListener("click", () => {
-      document.getElementById("globalSearch").value = ""; 
+      document.getElementById("globalSearch").value = "";
       document.getElementById("columnSearch").value = "";
-      document.getElementById("dateFrom").value = ""; 
+      document.getElementById("dateFrom").value = "";
       document.getElementById("dateTo").value = "";
-      activeFilters = []; 
-      sortState = { col: 3, dir: 'desc' }; // إعادة التعيين إلى الترتيب الافتراضي
-      
-      for (let i = 0; i < 5; i++) { 
-        const el = document.getElementById("sort-"+i); 
-        el.textContent = (i === 3) ? "▼" : ""; 
+      activeFilters = [];
+      sortState = { col: 3, dir: 'desc' };
+      for (let i = 0; i < 5; i++) {
+        const el = document.getElementById("sort-"+i);
+        el.textContent = (i === 3) ? "▼" : "";
       }
-      
-      updateFilterTags(); 
+      updateFilterTags();
       applyFiltersAndSort();
       alert("تمت إعادة التعيين");
     });
-    
+
     document.getElementById("refreshBtn").addEventListener("click", refreshData);
-    
+
     document.querySelectorAll(".quick-date-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
         const days = parseInt(e.currentTarget.dataset.days, 10);
         const today = new Date();
-        
-        if (days === 0) { 
-          document.getElementById("dateFrom").value = ""; 
-          document.getElementById("dateTo").value = ""; 
+        if (days === 0) {
+          document.getElementById("dateFrom").value = "";
+          document.getElementById("dateTo").value = "";
         } else {
-          const from = new Date(); 
+          const from = new Date();
           from.setDate(today.getDate() - days + 1);
           document.getElementById("dateFrom").value = from.toISOString().split('T')[0];
           document.getElementById("dateTo").value = today.toISOString().split('T')[0];
         }
-        
         applyFiltersAndSort();
       });
     });
-    
+
     document.querySelectorAll("#dataTable thead th").forEach(th => {
       th.addEventListener("click", () => {
         const col = parseInt(th.dataset.col, 10);
-        
         if (sortState.col === col) {
           sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
-        } else { 
-          sortState.col = col; 
-          sortState.dir = "desc"; // الافتراضي من الأحدث إلى الأقدم
+        } else {
+          sortState.col = col;
+          sortState.dir = "desc";
         }
-        
-        for (let i = 0; i < 5; i++) { 
-          const el = document.getElementById("sort-"+i); 
-          el.textContent = (i === sortState.col) ? (sortState.dir === "asc" ? "▲" : "▼") : ""; 
+        for (let i = 0; i < 5; i++) {
+          const el = document.getElementById("sort-"+i);
+          el.textContent = (i === sortState.col) ? (sortState.dir === "asc" ? "▲" : "▼") : "";
         }
-        
         applyFiltersAndSort();
       });
     });
-    
-    // إعداد خاصية السحب لتغيير حجم الأعمدة
+
+    // إعداد تغيير حجم الأعمدة
     setupColumnResizing();
-    
-    // إضافة حدث النقر على الخلايا للفلترة
+
+    // النقر على الخلايا لإضافة فلتر (عدا عمود التاريخ)
     document.addEventListener('click', function(e) {
       if (e.target.classList.contains('clickable-cell')) {
         const column = e.target.dataset.column;
         const value = e.target.dataset.value;
-        
         if (value && value.trim() !== '') {
-          // تعيين قيمة البحث في الفلتر
+          // ضع قيمة الفلتر في الاختيارات ثم أضف فلتر
           document.getElementById("columnFilter").value = column;
           document.getElementById("columnSearch").value = value;
-          
-          // إضافة الفلتر
           addFilter();
         }
       }
@@ -1140,12 +1085,11 @@
   document.addEventListener('DOMContentLoaded', function() {
     setupUI();
     loadDataFromCSV();
-    
+
     // تحديث تلقائي كل 5 دقائق
     setInterval(refreshData, 5 * 60 * 1000);
   });
+
   </script>
 </body>
 </html>
-
-
